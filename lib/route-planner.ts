@@ -65,7 +65,27 @@ export const cityName = (id: string) => city(id).name
 export const trafficLabel = (value: number) => value <= 1 ? 'Low' : value >= 3 ? 'High' : 'Medium'
 export const priorityCopy: Record<Priority, string> = { fastest: 'Time is weighted highest, with a small penalty for cost and traffic.', cheapest: 'Toll and fuel estimates lead the score while keeping distance practical.', shortest: 'Distance is the strongest signal in the route score.', traffic: 'Simulated traffic penalties guide the search toward calmer roads.', balanced: 'Distance, time, cost, and traffic are combined evenly.' }
 export const formatRoute = (path: string[]) => path.map(cityName).join(' → ')
-export const alternatives = (start: string, goal: string, priority: Priority) => (['fastest','cheapest','shortest','traffic','balanced'] as Priority[]).filter((item)=>item!==priority).map((item)=>searchRoute(start,goal,item)).sort((a,b)=>a.score-b.score).slice(0,2)
+const routeFromPath = (path: string[], priority: Priority): RouteResult => {
+  const foundRoads = path.slice(0, -1).map((from, index) => roads.find((road) => (road.from === from && road.to === path[index + 1]) || (road.to === from && road.from === path[index + 1]))!).filter(Boolean)
+  const distance = foundRoads.reduce((sum, road) => sum + road.distance, 0)
+  const hours = foundRoads.reduce((sum, road) => sum + road.hours, 0)
+  const toll = foundRoads.reduce((sum, road) => sum + road.toll, 0)
+  const fuel = foundRoads.reduce((sum, road) => sum + road.fuel, 0)
+  return { path, roads: foundRoads, distance, hours, toll, fuel, cost: toll + fuel, traffic: foundRoads.length ? Math.round(foundRoads.reduce((sum, road) => sum + road.traffic, 0) / foundRoads.length) : 0, explored: 0, score: foundRoads.reduce((sum, road) => sum + roadScore(road, priority), 0) }
+}
+
+export const alternatives = (start: string, goal: string, priority: Priority) => {
+  const paths: string[][] = []
+  const visit = (current: string, path: string[]) => {
+    if (paths.length >= 12) return
+    if (current === goal) { paths.push(path); return }
+    if (path.length > 8) return
+    neighbors(current).forEach((road) => { if (!path.includes(road.to)) visit(road.to, [...path, road.to]) })
+  }
+  visit(start, [start])
+  const recommended = searchRoute(start, goal, priority).path.join('-')
+  return paths.map((path) => routeFromPath(path, priority)).filter((route) => route.path.join('-') !== recommended).sort((a, b) => a.score - b.score).filter((route, index, all) => all.findIndex((candidate) => candidate.path.join('-') === route.path.join('-')) === index).slice(0, 2)
+}
 export const allRoads = roads
 export const allCities = cities
 
